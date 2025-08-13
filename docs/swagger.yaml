@@ -1,0 +1,20 @@
+basePath: /
+info:
+  contact: {}
+  description: Echo + PostgreSQL + Swagger (Starter)
+  title: YourApp API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - health
+swagger: "2.0"
