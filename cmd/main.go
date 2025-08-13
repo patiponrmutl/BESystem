@@ -24,8 +24,21 @@ func main() {
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
-	e.Use(middleware.Logger())
 	e.Use(middleware.CORS())
+	// ===== Pretty Logger with ANSI colors =====
+	const (
+		cReset  = "\033[0m"
+		cCyan   = "\033[36m"
+		cGreen  = "\033[32m"
+		cYellow = "\033[33m"
+	)
+
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		// ตัวอย่างฟอร์แมต: เวลา (ฟ้า) METHOD URI -> STATUS (เขียว) (latency) from IP
+		Format: cCyan + "[${time_rfc3339}]" + cReset +
+			" ${method} ${uri} -> " + cGreen + "${status}" + cReset +
+			" (${latency_human}) from ${remote_ip}\n",
+	}))
 
 	routes.Register(e)
 
