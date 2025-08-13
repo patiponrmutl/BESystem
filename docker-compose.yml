@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 19012546
+      POSTGRES_DB: studentplusadmin      # ← ต้องตรงกับ DB_NAME
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d studentplusadmin"]  # ← แก้จาก yourapp เป็น studentplusadmin
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+
+  api:
+    build: .
+    env_file:
+      - ./.env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+
+volumes:
+  dbdata:
