@@ -1,4 +1,38 @@
 basePath: /
+definitions:
+  handlers.schoolPayload:
+    properties:
+      address:
+        type: string
+      education_level:
+        type: string
+      phone:
+        type: string
+      school_code:
+        type: string
+      school_name:
+        type: string
+    type: object
+  models.School:
+    properties:
+      address:
+        type: string
+      created_at:
+        type: string
+      education_level:
+        description: อนุบาลศึกษา/ประถมศึกษา/มัธยมศึกษา/ทุกระดับการสอน
+        type: string
+      id:
+        type: integer
+      phone:
+        type: string
+      school_code:
+        type: string
+      school_name:
+        type: string
+      updated_at:
+        type: string
+    type: object
 info:
   contact: {}
   description: Echo + PostgreSQL + Swagger (Starter)
@@ -17,4 +51,82 @@ paths:
       summary: Health check
       tags:
       - health
+  /school:
+    get:
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.School'
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get school (single)
+      tags:
+      - school
+    post:
+      consumes:
+      - application/json
+      parameters:
+      - description: school payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.schoolPayload'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/models.School'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create school (only once)
+      tags:
+      - school
+    put:
+      consumes:
+      - application/json
+      parameters:
+      - description: school payload
+        in: body
+        name: payload
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.schoolPayload'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.School'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Update school (the only record)
+      tags:
+      - school
 swagger: "2.0"

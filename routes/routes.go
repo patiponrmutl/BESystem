@@ -13,4 +13,11 @@ func Register(e *echo.Echo) {
 
 	// Swagger UI
 	e.GET("/swagger/*", echoSwagger.WrapHandler)
+
+	// === School ===
+	school := handlers.NewSchoolHandler()
+	e.GET("/school", school.Get)
+	e.POST("/school", school.Create)
+	e.PUT("/school", school.Update)
+
 }

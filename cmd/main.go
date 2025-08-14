@@ -34,10 +34,7 @@ func main() {
 	)
 
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		// ตัวอย่างฟอร์แมต: เวลา (ฟ้า) METHOD URI -> STATUS (เขียว) (latency) from IP
-		Format: cCyan + "[${time_rfc3339}]" + cReset +
-			" ${method} ${uri} -> " + cGreen + "${status}" + cReset +
-			" (${latency_human}) from ${remote_ip}\n",
+		Format: "[${time_rfc3339}] method=${method} path=${uri} status=${status} (${error}) latency=${latency_human} ip=${remote_ip}\n",
 	}))
 
 	routes.Register(e)

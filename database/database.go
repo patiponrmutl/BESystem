@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/patiponrmutl/BESystem/config"
+	"github.com/patiponrmutl/BESystem/models"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -17,6 +18,8 @@ func Connect(cfg *config.Config) {
 	}
 	DB = db
 
-	// ถ้ายังไม่มีโมเดล ไม่ต้อง AutoMigrate อะไรในขั้นนี้
-	// ตัวอย่างต่อไป: DB.AutoMigrate(&models.User{})
+	// ✅ สร้างตาราง schools ให้อัตโนมัติ
+	if err := DB.AutoMigrate(&models.School{}); err != nil {
+		log.Fatalf("auto migrate failed: %v", err)
+	}
 }
