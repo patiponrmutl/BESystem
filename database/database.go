@@ -18,8 +18,14 @@ func Connect(cfg *config.Config) {
 	}
 	DB = db
 
-	// ✅ สร้างตาราง schools ให้อัตโนมัติ
-	if err := DB.AutoMigrate(&models.School{}); err != nil {
+	if err := DB.AutoMigrate(
+		&models.School{},
+		&models.Student{}, // ✅ เพิ่มนักเรียน
+		&models.Teacher{}, // ✅ ครู
+		&models.Homeroom{},
+		&models.StudentMove{}, // ✅ เพิ่ม
+		&models.StudentMove{},
+	); err != nil {
 		log.Fatalf("auto migrate failed: %v", err)
 	}
 }

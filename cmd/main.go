@@ -34,7 +34,8 @@ func main() {
 	)
 
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Format: "[${time_rfc3339}] method=${method} path=${uri} status=${status} (${error}) latency=${latency_human} ip=${remote_ip}\n",
+		Format: "[${time_rfc3339}] method=${method} path=${uri} status=${status} " +
+			"error=${error} latency=${latency_human} ip=${remote_ip}\n",
 	}))
 
 	routes.Register(e)

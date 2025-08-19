@@ -172,6 +172,12 @@ const docTemplate = `{
                 },
                 "school_name": {
                     "type": "string"
+                },
+                "student_code_digits": {
+                    "type": "integer"
+                },
+                "teacher_code_digits": {
+                    "type": "integer"
                 }
             }
         },
@@ -199,6 +205,13 @@ const docTemplate = `{
                 },
                 "school_name": {
                     "type": "string"
+                },
+                "student_code_digits": {
+                    "type": "integer"
+                },
+                "teacher_code_digits": {
+                    "description": "✅ ใหม่: ให้ตรง UI (0 = ไม่บังคับ, 1..20)",
+                    "type": "integer"
                 },
                 "updated_at": {
                     "type": "string"

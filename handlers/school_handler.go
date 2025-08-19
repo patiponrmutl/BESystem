@@ -20,6 +20,9 @@ type schoolPayload struct {
 	Address        string `json:"address"`
 	Phone          string `json:"phone"`
 	EducationLevel string `json:"education_level"`
+
+	TeacherCodeDigits int `json:"teacher_code_digits"`
+	StudentCodeDigits int `json:"student_code_digits"`
 }
 
 var (
@@ -52,6 +55,14 @@ func validate(p schoolPayload) map[string]string {
 	if !validLevels[strings.TrimSpace(p.EducationLevel)] {
 		errs["education_level"] = "กรุณาเลือกระดับการสอนให้ถูกต้อง"
 	}
+
+	if p.TeacherCodeDigits < 0 || p.TeacherCodeDigits > 20 {
+		errs["teacher_code_digits"] = "ต้องอยู่ระหว่าง 0–20"
+	}
+	if p.StudentCodeDigits < 0 || p.StudentCodeDigits > 20 {
+		errs["student_code_digits"] = "ต้องอยู่ระหว่าง 0–20"
+	}
+
 	if len(errs) == 0 {
 		return nil
 	}
@@ -99,12 +110,15 @@ func (h *SchoolHandler) Create(c echo.Context) error {
 	}
 
 	s := models.School{
-		SchoolCode:     strings.TrimSpace(p.SchoolCode),
-		SchoolName:     strings.TrimSpace(p.SchoolName),
-		Address:        strings.TrimSpace(p.Address),
-		Phone:          strings.TrimSpace(p.Phone),
-		EducationLevel: strings.TrimSpace(p.EducationLevel),
+		SchoolCode:        strings.TrimSpace(p.SchoolCode),
+		SchoolName:        strings.TrimSpace(p.SchoolName),
+		Address:           strings.TrimSpace(p.Address),
+		Phone:             strings.TrimSpace(p.Phone),
+		EducationLevel:    strings.TrimSpace(p.EducationLevel),
+		TeacherCodeDigits: p.TeacherCodeDigits,
+		StudentCodeDigits: p.StudentCodeDigits,
 	}
+
 	if err := database.DB.Create(&s).Error; err != nil {
 		// อาจชน unique school_code
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -141,9 +155,29 @@ func (h *SchoolHandler) Update(c echo.Context) error {
 	current.Address = strings.TrimSpace(p.Address)
 	current.Phone = strings.TrimSpace(p.Phone)
 	current.EducationLevel = strings.TrimSpace(p.EducationLevel)
+	current.TeacherCodeDigits = p.TeacherCodeDigits
+	current.StudentCodeDigits = p.StudentCodeDigits
 
 	if err := database.DB.Save(&current).Error; err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, current)
+}
+
+// DeleteSchool godoc
+// @Summary      Delete school (remove the single record)
+// @Tags         school
+// @Success      204
+// @Failure      404 {object} map[string]string
+// @Router       /school [delete]
+func (h *SchoolHandler) Delete(c echo.Context) error {
+	// ถ้าต้องการลบเฉพาะรายการแรก (เราเก็บไว้ 1 รายการ)
+	var s models.School
+	if err := database.DB.First(&s).Error; err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
+	if err := database.DB.Delete(&s).Error; err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.NoContent(http.StatusNoContent) // 204
 }
