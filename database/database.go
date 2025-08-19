@@ -25,6 +25,7 @@ func Connect(cfg *config.Config) {
 		&models.Homeroom{},
 		&models.StudentMove{}, // ✅ เพิ่ม
 		&models.StudentMove{},
+		&models.CalendarItem{},
 	); err != nil {
 		log.Fatalf("auto migrate failed: %v", err)
 	}

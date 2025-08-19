@@ -62,4 +62,11 @@ func Register(e *echo.Echo) {
 	e.PUT("/moves/:id", mv.Update)
 	e.DELETE("/moves/:id", mv.Delete)
 
+	cal := handlers.NewCalendarHandler()
+	e.GET("/calendar", cal.List)          // list ทั้งหมด (รองรับ ?type=normal|holiday|event)
+	e.GET("/calendar/:id", cal.GetByID)   // อ่านตัวเดียว
+	e.POST("/calendar", cal.Create)       // เพิ่มรายการ
+	e.PUT("/calendar/:id", cal.Update)    // แก้ไข
+	e.DELETE("/calendar/:id", cal.Delete) // ลบ
+
 }
