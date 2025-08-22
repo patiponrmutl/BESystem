@@ -63,10 +63,24 @@ func Register(e *echo.Echo) {
 	e.DELETE("/moves/:id", mv.Delete)
 
 	cal := handlers.NewCalendarHandler()
-	e.GET("/calendar", cal.List)          // list ทั้งหมด (รองรับ ?type=normal|holiday|event)
-	e.GET("/calendar/:id", cal.GetByID)   // อ่านตัวเดียว
-	e.POST("/calendar", cal.Create)       // เพิ่มรายการ
-	e.PUT("/calendar/:id", cal.Update)    // แก้ไข
-	e.DELETE("/calendar/:id", cal.Delete) // ลบ
+
+	// อ่านรายการรวม/เดี่ยว (คงไว้ได้)
+	e.GET("/calendar/:id", cal.GetByID)
+
+	// แยกตามหมวด + ครบทุก METHOD
+	e.GET("/calendar/normals", cal.ListNormals)
+	e.POST("/calendar/normals", cal.CreateNormal)
+	e.PUT("/calendar/normals/:id", cal.UpdateNormal)
+	e.DELETE("/calendar/normals/:id", cal.DeleteNormal)
+
+	e.GET("/calendar/holidays", cal.ListHolidays)
+	e.POST("/calendar/holidays", cal.CreateHoliday)
+	e.PUT("/calendar/holidays/:id", cal.UpdateHoliday)
+	e.DELETE("/calendar/holidays/:id", cal.DeleteHoliday)
+
+	e.GET("/calendar/events", cal.ListEvents)
+	e.POST("/calendar/events", cal.CreateEvent)
+	e.PUT("/calendar/events/:id", cal.UpdateEvent)
+	e.DELETE("/calendar/events/:id", cal.DeleteEvent)
 
 }

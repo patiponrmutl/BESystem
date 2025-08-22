@@ -2,28 +2,28 @@ package models
 
 import "time"
 
-// CalendarItem ใช้ตัวเดียว ครอบคลุม 3 ประเภท: normal / holiday / event
+// CalendarItem ครอบคลุม 3 ประเภท: normal / holiday / event
 type CalendarItem struct {
 	ID   uint   `json:"id" gorm:"primaryKey"`
 	Type string `json:"type" gorm:"type:varchar(20);index"` // normal | holiday | event
 	Note string `json:"note" gorm:"type:varchar(200)"`
 
-	// ----- NORMAL (เวลาเรียน/ภาคเรียน) -----
+	// ----- NORMAL -----
 	Semester     string `json:"semester" gorm:"type:varchar(40)"`
 	AcademicYear string `json:"academic_year" gorm:"type:varchar(10)"`
-	OpenDate     string `json:"open_date" gorm:"type:date"`
-	CloseDate    string `json:"close_date" gorm:"type:date"`
+	OpenDate     string `json:"open_date" gorm:"type:varchar(10)"`  // YYYY-MM-DD (string)
+	CloseDate    string `json:"close_date" gorm:"type:varchar(10)"` // YYYY-MM-DD (string)
 	TimeIn       string `json:"time_in" gorm:"type:varchar(5)"`
 	TimeOut      string `json:"time_out" gorm:"type:varchar(5)"`
 
-	// ----- HOLIDAY (วันหยุด) -----
-	Name      string `json:"name" gorm:"type:varchar(80)"` // ถ้า “อื่นๆ” ให้เก็บข้อความจริงในช่องนี้เลย
-	StartDate string `json:"start_date" gorm:"type:date"`
-	EndDate   string `json:"end_date" gorm:"type:date"`
+	// ----- HOLIDAY -----
+	Name      string `json:"name" gorm:"type:varchar(80)"`
+	StartDate string `json:"start_date" gorm:"type:varchar(10)"` // YYYY-MM-DD (string)
+	EndDate   string `json:"end_date" gorm:"type:varchar(10)"`   // YYYY-MM-DD (string, อาจว่าง)
 
-	// ----- EVENT (กิจกรรมพิเศษ) -----
+	// ----- EVENT -----
 	Title     string `json:"title" gorm:"type:varchar(80)"`
-	Date      string `json:"date" gorm:"type:date"`
+	Date      string `json:"date" gorm:"type:varchar(10)"` // YYYY-MM-DD (string, อาจว่าง)
 	StartTime string `json:"start_time" gorm:"type:varchar(5)"`
 	EndTime   string `json:"end_time" gorm:"type:varchar(5)"`
 

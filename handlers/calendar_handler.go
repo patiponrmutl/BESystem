@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,12 +16,10 @@ type CalendarHandler struct{}
 
 func NewCalendarHandler() *CalendarHandler { return &CalendarHandler{} }
 
-var (
-	reTimeHHMM = regexp.MustCompile(`^\d{2}:\d{2}$`)
-	reRoom     = regexp.MustCompile(`^\d{1,3}$`) // ไว้เผื่ออนาคต
-)
+// ─── Validators ────────────────────────────────────────────────────────────────
+var reHHMM = regexp.MustCompile(`^\d{2}:\d{2}$`)
 
-func parseDateYYYYMMDD(s string) bool {
+func isDateYYYYMMDD(s string) bool {
 	if strings.TrimSpace(s) == "" {
 		return false
 	}
@@ -28,19 +27,45 @@ func parseDateYYYYMMDD(s string) bool {
 	return err == nil
 }
 
-func (h *CalendarHandler) List(c echo.Context) error {
-	q := database.DB.Model(&models.CalendarItem{})
-	if t := strings.TrimSpace(c.QueryParam("type")); t != "" {
-		q = q.Where("type = ?", t)
-	}
+func mustID(c echo.Context) (uint64, error) {
+	idStr := c.Param("id")
+	return strconv.ParseUint(idStr, 10, 64)
+}
+
+// ─── LIST (GET) ────────────────────────────────────────────────────────────────
+
+// GET /calendar/normals
+func (h *CalendarHandler) ListNormals(c echo.Context) error {
 	var items []models.CalendarItem
-	if err := q.Order("id DESC").Find(&items).Error; err != nil {
+	if err := database.DB.Where("type = ?", "normal").Order("id DESC").Find(&items).Error; err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, map[string]string{"error": "DB_QUERY_FAILED"})
 	}
 	return c.JSON(http.StatusOK, items)
 }
 
+// GET /calendar/holidays
+func (h *CalendarHandler) ListHolidays(c echo.Context) error {
+	var items []models.CalendarItem
+	if err := database.DB.Where("type = ?", "holiday").Order("id DESC").Find(&items).Error; err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, map[string]string{"error": "DB_QUERY_FAILED"})
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+// GET /calendar/events
+func (h *CalendarHandler) ListEvents(c echo.Context) error {
+	var items []models.CalendarItem
+	if err := database.DB.Where("type = ?", "event").Order("id DESC").Find(&items).Error; err != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, map[string]string{"error": "DB_QUERY_FAILED"})
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
+// GET /calendar/:id  (อ่านตัวเดียวด้วย id ตัวเลขเท่านั้น)
 func (h *CalendarHandler) GetByID(c echo.Context) error {
+	if _, err := mustID(c); err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
 	var it models.CalendarItem
 	if err := database.DB.First(&it, "id = ?", c.Param("id")).Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
@@ -48,72 +73,40 @@ func (h *CalendarHandler) GetByID(c echo.Context) error {
 	return c.JSON(http.StatusOK, it)
 }
 
-func (h *CalendarHandler) Create(c echo.Context) error {
+// ─── CREATE (POST) ─────────────────────────────────────────────────────────────
+
+// POST /calendar/normals
+func (h *CalendarHandler) CreateNormal(c echo.Context) error {
 	var v models.CalendarItem
 	if err := c.Bind(&v); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_PAYLOAD"})
 	}
-	v.Type = strings.ToLower(strings.TrimSpace(v.Type))
+	v.Type = "normal"
 
-	// ----- Validate ตามชนิด -----
 	fields := map[string]string{}
-	switch v.Type {
-	case "normal":
-		if v.Semester == "" {
-			fields["semester"] = "กรุณาเลือกภาคการศึกษา"
-		}
-		if v.AcademicYear == "" {
-			fields["academic_year"] = "กรุณาเลือกปีการศึกษา"
-		}
-		if !parseDateYYYYMMDD(v.OpenDate) {
-			fields["open_date"] = "รูปแบบวันที่ต้องเป็น YYYY-MM-DD"
-		}
-		if !parseDateYYYYMMDD(v.CloseDate) {
-			fields["close_date"] = "รูปแบบวันที่ต้องเป็น YYYY-MM-DD"
-		}
-		if v.OpenDate != "" && v.CloseDate != "" && v.CloseDate < v.OpenDate {
-			fields["close_date"] = "วันปิดภาคเรียนต้องไม่ก่อนวันเปิดภาคเรียน"
-		}
-		if !reTimeHHMM.MatchString(v.TimeIn) {
-			fields["time_in"] = "รูปแบบเวลา HH:MM"
-		}
-		if !reTimeHHMM.MatchString(v.TimeOut) || (v.TimeIn != "" && v.TimeOut <= v.TimeIn) {
-			fields["time_out"] = "เวลาเลิกเรียนต้องมากกว่าเวลาเข้าเรียน (HH:MM)"
-		}
-
-	case "holiday":
-		if v.Name == "" {
-			fields["name"] = "กรุณากรอกชื่อวันหยุด"
-		}
-		if !parseDateYYYYMMDD(v.StartDate) {
-			fields["start_date"] = "รูปแบบวันที่ต้องเป็น YYYY-MM-DD"
-		}
-		if v.EndDate != "" && (!parseDateYYYYMMDD(v.EndDate) || v.EndDate < v.StartDate) {
-			fields["end_date"] = "วันที่สิ้นสุดต้องไม่ก่อนวันที่เริ่มต้น"
-		}
-
-	case "event":
-		if v.Title == "" {
-			fields["title"] = "กรุณากรอกชื่อกิจกรรม"
-		}
-		if !parseDateYYYYMMDD(v.Date) {
-			fields["date"] = "รูปแบบวันที่ต้องเป็น YYYY-MM-DD"
-		}
-		if v.StartTime != "" && !reTimeHHMM.MatchString(v.StartTime) {
-			fields["start_time"] = "รูปแบบเวลา HH:MM"
-		}
-		if v.EndTime != "" && (!reTimeHHMM.MatchString(v.EndTime) || (v.StartTime != "" && v.EndTime <= v.StartTime)) {
-			fields["end_time"] = "เวลาเลิกกิจกรรมต้องมากกว่าเวลาเริ่ม (HH:MM)"
-		}
-
-	default:
-		fields["type"] = "ต้องเป็น normal | holiday | event"
+	if strings.TrimSpace(v.Semester) == "" {
+		fields["semester"] = "กรุณาเลือกภาคการศึกษา"
+	}
+	if strings.TrimSpace(v.AcademicYear) == "" {
+		fields["academic_year"] = "กรุณาเลือกปีการศึกษา"
+	}
+	if !isDateYYYYMMDD(v.OpenDate) {
+		fields["open_date"] = "ต้องเป็น YYYY-MM-DD"
+	}
+	if !isDateYYYYMMDD(v.CloseDate) {
+		fields["close_date"] = "ต้องเป็น YYYY-MM-DD"
+	}
+	if v.OpenDate != "" && v.CloseDate != "" && v.CloseDate < v.OpenDate {
+		fields["close_date"] = "ต้องไม่ก่อนวันเปิดภาคเรียน"
+	}
+	if !reHHMM.MatchString(v.TimeIn) {
+		fields["time_in"] = "รูปแบบเวลา HH:MM"
+	}
+	if !reHHMM.MatchString(v.TimeOut) || (v.TimeIn != "" && v.TimeOut <= v.TimeIn) {
+		fields["time_out"] = "ต้องมากกว่าเวลาเข้าเรียน (HH:MM)"
 	}
 	if len(fields) > 0 {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{
-			"error":  "VALIDATION_ERROR",
-			"fields": fields,
-		})
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "VALIDATION_ERROR", "fields": fields})
 	}
 
 	if err := database.DB.Create(&v).Error; err != nil {
@@ -122,9 +115,75 @@ func (h *CalendarHandler) Create(c echo.Context) error {
 	return c.JSON(http.StatusCreated, map[string]any{"id": v.ID})
 }
 
-func (h *CalendarHandler) Update(c echo.Context) error {
+// POST /calendar/holidays
+func (h *CalendarHandler) CreateHoliday(c echo.Context) error {
+	var v models.CalendarItem
+	if err := c.Bind(&v); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_PAYLOAD"})
+	}
+	v.Type = "holiday"
+
+	fields := map[string]string{}
+	if strings.TrimSpace(v.Name) == "" {
+		fields["name"] = "กรุณากรอกชื่อวันหยุด"
+	}
+	if !isDateYYYYMMDD(v.StartDate) {
+		fields["start_date"] = "ต้องเป็น YYYY-MM-DD"
+	}
+	if v.EndDate != "" && (!isDateYYYYMMDD(v.EndDate) || v.EndDate < v.StartDate) {
+		fields["end_date"] = "ต้องไม่ก่อนวันที่เริ่มต้น"
+	}
+	if len(fields) > 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "VALIDATION_ERROR", "fields": fields})
+	}
+
+	if err := database.DB.Create(&v).Error; err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, map[string]any{"id": v.ID})
+}
+
+// POST /calendar/events
+func (h *CalendarHandler) CreateEvent(c echo.Context) error {
+	var v models.CalendarItem
+	if err := c.Bind(&v); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_PAYLOAD"})
+	}
+	v.Type = "event"
+
+	fields := map[string]string{}
+	if strings.TrimSpace(v.Title) == "" {
+		fields["title"] = "กรุณากรอกชื่อกิจกรรม"
+	}
+	if !isDateYYYYMMDD(v.Date) {
+		fields["date"] = "ต้องเป็น YYYY-MM-DD"
+	}
+	if v.StartTime != "" && !reHHMM.MatchString(v.StartTime) {
+		fields["start_time"] = "รูปแบบเวลา HH:MM"
+	}
+	if v.EndTime != "" && (!reHHMM.MatchString(v.EndTime) || (v.StartTime != "" && v.EndTime <= v.StartTime)) {
+		fields["end_time"] = "ต้องมากกว่าเวลาเริ่ม (HH:MM)"
+	}
+	if len(fields) > 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "VALIDATION_ERROR", "fields": fields})
+	}
+
+	if err := database.DB.Create(&v).Error; err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusCreated, map[string]any{"id": v.ID})
+}
+
+// ─── UPDATE (PUT) ──────────────────────────────────────────────────────────────
+
+// PUT /calendar/normals/:id
+func (h *CalendarHandler) UpdateNormal(c echo.Context) error {
+	id, err := mustID(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_ID"})
+	}
 	var it models.CalendarItem
-	if err := database.DB.First(&it, "id = ?", c.Param("id")).Error; err != nil {
+	if err := database.DB.First(&it, "id = ? AND type = ?", id, "normal").Error; err != nil {
 		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
 	}
 	var p models.CalendarItem
@@ -132,85 +191,36 @@ func (h *CalendarHandler) Update(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_PAYLOAD"})
 	}
 
-	// อนุญาตแก้เฉพาะฟิลด์ของชนิดนั้น ๆ
-	switch it.Type {
-	case "normal":
-		if p.Semester != "" {
-			it.Semester = p.Semester
-		}
-		if p.AcademicYear != "" {
-			it.AcademicYear = p.AcademicYear
-		}
-		if p.OpenDate != "" {
-			if !parseDateYYYYMMDD(p.OpenDate) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "open_date invalid"})
-			}
-			it.OpenDate = p.OpenDate
-		}
-		if p.CloseDate != "" {
-			if !parseDateYYYYMMDD(p.CloseDate) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "close_date invalid"})
-			}
-			if it.OpenDate != "" && p.CloseDate < it.OpenDate {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "close_date before open_date"})
-			}
-			it.CloseDate = p.CloseDate
-		}
-		if p.TimeIn != "" {
-			if !reTimeHHMM.MatchString(p.TimeIn) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "time_in invalid"})
-			}
-			it.TimeIn = p.TimeIn
-		}
-		if p.TimeOut != "" {
-			if !reTimeHHMM.MatchString(p.TimeOut) || (it.TimeIn != "" && p.TimeOut <= it.TimeIn) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "time_out invalid"})
-			}
-			it.TimeOut = p.TimeOut
-		}
-
-	case "holiday":
-		if p.Name != "" {
-			it.Name = p.Name
-		}
-		if p.StartDate != "" {
-			if !parseDateYYYYMMDD(p.StartDate) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "start_date invalid"})
-			}
-			it.StartDate = p.StartDate
-		}
-		if p.EndDate != "" {
-			if !parseDateYYYYMMDD(p.EndDate) || (it.StartDate != "" && p.EndDate < it.StartDate) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "end_date invalid"})
-			}
-			it.EndDate = p.EndDate
-		}
-
-	case "event":
-		if p.Title != "" {
-			it.Title = p.Title
-		}
-		if p.Date != "" {
-			if !parseDateYYYYMMDD(p.Date) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "date invalid"})
-			}
-			it.Date = p.Date
-		}
-		if p.StartTime != "" {
-			if !reTimeHHMM.MatchString(p.StartTime) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "start_time invalid"})
-			}
-			it.StartTime = p.StartTime
-		}
-		if p.EndTime != "" {
-			if !reTimeHHMM.MatchString(p.EndTime) || (it.StartTime != "" && p.EndTime <= it.StartTime) {
-				return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "end_time invalid"})
-			}
-			it.EndTime = p.EndTime
-		}
+	if p.Semester != "" {
+		it.Semester = p.Semester
 	}
-
-	// note ใช้ได้ทุกชนิด
+	if p.AcademicYear != "" {
+		it.AcademicYear = p.AcademicYear
+	}
+	if p.OpenDate != "" {
+		if !isDateYYYYMMDD(p.OpenDate) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "open_date invalid"})
+		}
+		it.OpenDate = p.OpenDate
+	}
+	if p.CloseDate != "" {
+		if !isDateYYYYMMDD(p.CloseDate) || (it.OpenDate != "" && p.CloseDate < it.OpenDate) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "close_date invalid"})
+		}
+		it.CloseDate = p.CloseDate
+	}
+	if p.TimeIn != "" {
+		if !reHHMM.MatchString(p.TimeIn) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "time_in invalid"})
+		}
+		it.TimeIn = p.TimeIn
+	}
+	if p.TimeOut != "" {
+		if !reHHMM.MatchString(p.TimeOut) || (it.TimeIn != "" && p.TimeOut <= it.TimeIn) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "time_out invalid"})
+		}
+		it.TimeOut = p.TimeOut
+	}
 	if p.Note != "" || (p.Note == "" && c.Request().Body != nil) {
 		it.Note = p.Note
 	}
@@ -221,8 +231,133 @@ func (h *CalendarHandler) Update(c echo.Context) error {
 	return c.JSON(http.StatusOK, it)
 }
 
-func (h *CalendarHandler) Delete(c echo.Context) error {
-	tx := database.DB.Delete(&models.CalendarItem{}, "id = ?", c.Param("id"))
+// PUT /calendar/holidays/:id
+func (h *CalendarHandler) UpdateHoliday(c echo.Context) error {
+	id, err := mustID(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_ID"})
+	}
+	var it models.CalendarItem
+	if err := database.DB.First(&it, "id = ? AND type = ?", id, "holiday").Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
+	var p models.CalendarItem
+	if err := c.Bind(&p); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_PAYLOAD"})
+	}
+
+	if p.Name != "" {
+		it.Name = p.Name
+	}
+	if p.StartDate != "" {
+		if !isDateYYYYMMDD(p.StartDate) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "start_date invalid"})
+		}
+		it.StartDate = p.StartDate
+	}
+	if p.EndDate != "" {
+		if !isDateYYYYMMDD(p.EndDate) || (it.StartDate != "" && p.EndDate < it.StartDate) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "end_date invalid"})
+		}
+		it.EndDate = p.EndDate
+	}
+	if p.Note != "" || (p.Note == "" && c.Request().Body != nil) {
+		it.Note = p.Note
+	}
+
+	if err := database.DB.Save(&it).Error; err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, it)
+}
+
+// PUT /calendar/events/:id
+func (h *CalendarHandler) UpdateEvent(c echo.Context) error {
+	id, err := mustID(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_ID"})
+	}
+	var it models.CalendarItem
+	if err := database.DB.First(&it, "id = ? AND type = ?", id, "event").Error; err != nil {
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
+	var p models.CalendarItem
+	if err := c.Bind(&p); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_PAYLOAD"})
+	}
+
+	if p.Title != "" {
+		it.Title = p.Title
+	}
+	if p.Date != "" {
+		if !isDateYYYYMMDD(p.Date) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "date invalid"})
+		}
+		it.Date = p.Date
+	}
+	if p.StartTime != "" {
+		if !reHHMM.MatchString(p.StartTime) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "start_time invalid"})
+		}
+		it.StartTime = p.StartTime
+	}
+	if p.EndTime != "" {
+		if !reHHMM.MatchString(p.EndTime) || (it.StartTime != "" && p.EndTime <= it.StartTime) {
+			return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "end_time invalid"})
+		}
+		it.EndTime = p.EndTime
+	}
+	if p.Note != "" || (p.Note == "" && c.Request().Body != nil) {
+		it.Note = p.Note
+	}
+
+	if err := database.DB.Save(&it).Error; err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, it)
+}
+
+// ─── DELETE (DELETE) ───────────────────────────────────────────────────────────
+
+// DELETE /calendar/normals/:id
+func (h *CalendarHandler) DeleteNormal(c echo.Context) error {
+	id, err := mustID(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_ID"})
+	}
+	tx := database.DB.Delete(&models.CalendarItem{}, "id = ? AND type = ?", id, "normal")
+	if tx.Error != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, map[string]string{"error": "DB_DELETE_FAILED"})
+	}
+	if tx.RowsAffected == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// DELETE /calendar/holidays/:id
+func (h *CalendarHandler) DeleteHoliday(c echo.Context) error {
+	id, err := mustID(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_ID"})
+	}
+	tx := database.DB.Delete(&models.CalendarItem{}, "id = ? AND type = ?", id, "holiday")
+	if tx.Error != nil {
+		return echo.NewHTTPError(http.StatusInternalServerError, map[string]string{"error": "DB_DELETE_FAILED"})
+	}
+	if tx.RowsAffected == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// DELETE /calendar/events/:id
+func (h *CalendarHandler) DeleteEvent(c echo.Context) error {
+	id, err := mustID(c)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]string{"error": "INVALID_ID"})
+	}
+	tx := database.DB.Delete(&models.CalendarItem{}, "id = ? AND type = ?", id, "event")
 	if tx.Error != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, map[string]string{"error": "DB_DELETE_FAILED"})
 	}

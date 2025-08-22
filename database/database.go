@@ -19,13 +19,14 @@ func Connect(cfg *config.Config) {
 	DB = db
 
 	if err := DB.AutoMigrate(
+
 		&models.School{},
-		&models.Student{}, // ✅ เพิ่มนักเรียน
-		&models.Teacher{}, // ✅ ครู
-		&models.Homeroom{},
-		&models.StudentMove{}, // ✅ เพิ่ม
-		&models.StudentMove{},
-		&models.CalendarItem{},
+		&models.Student{},      // ✅ เพิ่มนักเรียน
+		&models.Teacher{},      // ✅ ครู
+		&models.Homeroom{},     // ✅ กำหนดครูประจำชั้น
+		&models.StudentMove{},  // ✅ เพิ่ม
+		&models.StudentMove{},  // ✅ การย้ายนักเรียน
+		&models.CalendarItem{}, // ✅ ปฎิทินการศึกษา
 	); err != nil {
 		log.Fatalf("auto migrate failed: %v", err)
 	}
