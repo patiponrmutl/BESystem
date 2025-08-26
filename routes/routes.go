@@ -101,11 +101,23 @@ func RegisterRoutes(e *echo.Echo) {
 	admin.PUT("/calendar/events/:id", cal.UpdateEvent)
 	admin.DELETE("/calendar/events/:id", cal.DeleteEvent)
 
+	// --- เพิ่มบรรทัดนี้ตรงส่วนประกาศ handler อื่น ๆ ---
+	lv := handlers.NewLeaveRequestHandler()
+
 	// Teacher routes
 	teacher := e.Group("/teacher", authMW, middlewares.RequireRole("teacher", "admin"))
-	teacher.GET("/students", std.List)
-	teacher.GET("/homerooms", hr.List)
-	teacher.POST("/attendance/mark", handlers.MarkAttendance)
+	{
+		// ที่มีอยู่แล้ว
+		teacher.GET("/students", std.List)
+		teacher.GET("/homerooms", hr.List)
+		teacher.POST("/attendance/mark", handlers.MarkAttendance)
+
+		// ===== Leave Requests (ใหม่) =====
+		teacher.GET("/leave-requests", lv.List)
+		teacher.GET("/leave-requests/pending-count", lv.PendingCount)
+		teacher.POST("/leave-requests/:id/approve", lv.Approve)
+		teacher.POST("/leave-requests/:id/reject", lv.Reject)
+	}
 
 	// Parent routes
 	parent := e.Group("/parent", authMW, middlewares.RequireRole("parent"))
