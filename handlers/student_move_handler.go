@@ -668,3 +668,8 @@ func (h *StudentMoveHandler) Delete(c echo.Context) error {
 	}
 	return c.NoContent(http.StatusNoContent)
 }
+
+// Create คือ alias ของ MoveAuto เพื่อให้ routes.go เรียกได้
+func (h *StudentMoveHandler) Create(c echo.Context) error {
+	return h.MoveAuto(c)
+}

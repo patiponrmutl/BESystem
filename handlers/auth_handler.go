@@ -162,13 +162,13 @@ func (h *AuthHandler) StaffLogin(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
 	}
 
-	token, err := h.signJWT(uint(u.ID), u.Role, u.Name, 7*24*time.Hour)
+	token, err := h.signJWT(uint(u.ID), u.Role, u.Username, 7*24*time.Hour)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, map[string]any{"error": "TOKEN_GEN_FAILED"})
 	}
 
 	return c.JSON(http.StatusOK, map[string]any{
 		"token": token,
-		"user":  map[string]any{"id": u.ID, "role": u.Role, "username": u.Username, "name": u.Name},
+		"user":  map[string]any{"id": u.ID, "role": u.Role, "username": u.Username, "name": u.Username},
 	})
 }

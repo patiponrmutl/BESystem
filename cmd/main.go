@@ -38,7 +38,7 @@ func main() {
 			"error=${error} latency=${latency_human} ip=${remote_ip}\n",
 	}))
 
-	routes.Register(e)
+	routes.RegisterRoutes(e)
 
 	addr := ":" + cfg.AppPort
 	log.Printf("server listening at %s", addr)
