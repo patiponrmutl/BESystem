@@ -27,6 +27,7 @@ func Connect(cfg *config.Config) {
 		&models.StudentMove{},  // ✅ เพิ่ม
 		&models.StudentMove{},  // ✅ การย้ายนักเรียน
 		&models.CalendarItem{}, // ✅ ปฎิทินการศึกษา
+		&models.Attendance{},
 		&models.User{},
 		&models.Parent{},
 	); err != nil {

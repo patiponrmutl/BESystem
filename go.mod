@@ -7,7 +7,6 @@ toolchain go1.24.4
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/labstack/echo/v4 v4.12.0
-	github.com/swaggo/echo-swagger v1.4.0
 	github.com/swaggo/swag v1.16.3
 	golang.org/x/crypto v0.41.0
 	gorm.io/driver/postgres v1.5.7
@@ -34,7 +33,6 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
-	github.com/swaggo/files/v2 v2.0.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasttemplate v1.2.2 // indirect
 	golang.org/x/net v0.42.0 // indirect

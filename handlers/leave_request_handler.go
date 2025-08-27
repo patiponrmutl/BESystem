@@ -144,14 +144,6 @@ func getUserID(c echo.Context) (uint, bool) {
 		return 0, false
 	}
 }
-func atoiOr(s string, def int) int {
-	var n int
-	_, err := fmtSscanf(s, "%d", &n)
-	if err != nil {
-		return def
-	}
-	return n
-}
 
 // ใช้ fmt.Sscanf โดยเลี่ยง import fmt ตรง ๆ
 func fmtSscanf(str string, format string, a ...any) (int, error) {

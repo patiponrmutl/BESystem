@@ -9,6 +9,9 @@ import (
 )
 
 func RegisterRoutes(e *echo.Echo) {
+	att := handlers.NewAttendanceHandler()
+	tss := handlers.NewTeacherStudentsSummaryHandler()
+
 	// ====== Auth ======
 	auth := handlers.NewAuthHandler()
 	e.POST("/auth/parents/register", auth.ParentRegister)
@@ -113,6 +116,9 @@ func RegisterRoutes(e *echo.Echo) {
 		teacher.POST("/attendance/mark", handlers.MarkAttendance)
 
 		// ===== Leave Requests (ใหม่) =====
+		// Summary Report endpoints
+		teacher.GET("/students-summary", tss.List)
+		teacher.GET("/attendance", att.List)
 		teacher.GET("/leave-requests", lv.List)
 		teacher.GET("/leave-requests/pending-count", lv.PendingCount)
 		teacher.POST("/leave-requests/:id/approve", lv.Approve)
@@ -123,4 +129,5 @@ func RegisterRoutes(e *echo.Echo) {
 	parent := e.Group("/parent", authMW, middlewares.RequireRole("parent"))
 	parent.GET("/children", handlers.ParentChildren)
 	parent.GET("/calendar/events", cal.ListEvents)
+
 }
