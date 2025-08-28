@@ -106,14 +106,18 @@ func RegisterRoutes(e *echo.Echo) {
 
 	// --- เพิ่มบรรทัดนี้ตรงส่วนประกาศ handler อื่น ๆ ---
 	lv := handlers.NewLeaveRequestHandler()
+	dash := handlers.NewDashboardHandler()
 
 	// Teacher routes
 	teacher := e.Group("/teacher", authMW, middlewares.RequireRole("teacher", "admin"))
+
 	{
 		// ที่มีอยู่แล้ว
 		teacher.GET("/students", std.List)
 		teacher.GET("/homerooms", hr.List)
 		teacher.POST("/attendance/mark", handlers.MarkAttendance)
+		teacher.GET("/dashboard/daily", dash.Daily)
+		teacher.POST("/attendance/mark", att.Mark)
 
 		// ===== Leave Requests (ใหม่) =====
 		// Summary Report endpoints

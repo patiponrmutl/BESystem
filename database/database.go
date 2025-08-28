@@ -30,6 +30,7 @@ func Connect(cfg *config.Config) {
 		&models.Attendance{},
 		&models.User{},
 		&models.Parent{},
+		&models.LeaveRequest{},
 	); err != nil {
 		log.Fatalf("auto migrate failed: %v", err)
 	}

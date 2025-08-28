@@ -13,3 +13,7 @@ func atoiOr(s string, def int) int {
 	}
 	return n
 }
+
+func fmtUint(u uint) string {
+	return strconv.FormatUint(uint64(u), 10)
+}

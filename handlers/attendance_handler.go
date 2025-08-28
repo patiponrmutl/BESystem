@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
@@ -65,6 +66,66 @@ func (h *AttendanceHandler) List(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, rows)
+}
+
+func (h *AttendanceHandler) Mark(c echo.Context) error {
+	var req struct {
+		StudentID uint   `json:"student_id"`
+		Date      string `json:"date"`
+		Status    string `json:"status"`
+		Note      string `json:"note"`
+		Operator  string `json:"operator"` // เก็บลง Note เพิ่ม/หรือช่องแยก ถ้ามีคอลัมน์
+		Retro     bool   `json:"retro"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
+	}
+	if req.StudentID == 0 || req.Date == "" || req.Status == "" {
+		return c.JSON(http.StatusBadRequest, map[string]any{"error": "MISSING_FIELDS"})
+	}
+
+	// map "ลากิจ/ลาป่วย" → เก็บเป็น "ลา" + note แยก (ให้เข้ากับ FE ที่รวมเป็น 'ลา')
+	status := strings.TrimSpace(req.Status)
+	note := strings.TrimSpace(req.Note)
+	if status == "ลากิจ" {
+		status = "ลา"
+		if note == "" {
+			note = "ธุระส่วนตัว"
+		}
+	} else if status == "ลาป่วย" {
+		status = "ลา"
+		if note == "" {
+			note = "ป่วย"
+		}
+	}
+
+	// ออกแบบ: 1 วัน/นักเรียน อนุญาตหลายแถว (เข้า/ออก) → ที่ Dashboard เราจะดึง “ล่าสุด” อยู่แล้ว
+	rec := models.Attendance{
+		StudentID: req.StudentID,
+		Date:      req.Date,
+		Time:      time.Now().Format("15:04"),
+		Status:    status,
+		Note:      note,
+	}
+	if status == "ขาด" || status == "ลา" || status == "ยังไม่เข้าโรงเรียน" {
+		rec.Time = "—"
+	}
+
+	if err := database.DB.Create(&rec).Error; err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
+
+	// ตอบกลับรูปแบบที่หน้า Dashboard ใช้
+	out := map[string]any{
+		"id":         rec.ID,
+		"student_id": rec.StudentID,
+		"status":     rec.Status,
+		"time":       rec.Time,
+		"note":       rec.Note,
+		"operator":   strings.TrimSpace(req.Operator),
+		"retro":      req.Retro,
+	}
+	return c.JSON(http.StatusOK, out)
 }
 
 func splitCSV(s string) []string {
