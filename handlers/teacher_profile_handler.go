@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"github.com/labstack/echo/v4"
 
@@ -54,6 +55,57 @@ type profileUpdateRequest struct {
 type changePasswordRequest struct {
 	Current string `json:"current"`
 	Next    string `json:"next"`
+}
+
+type TeacherProfileHandler struct{}
+
+func NewTeacherProfileHandler() *TeacherProfileHandler { return &TeacherProfileHandler{} }
+
+func (h *TeacherProfileHandler) ChangePassword(c echo.Context) error {
+	var req struct {
+		OldPassword string `json:"old_password"`
+		NewPassword string `json:"new_password"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
+	}
+	if req.OldPassword == "" || req.NewPassword == "" {
+		return c.JSON(http.StatusUnprocessableEntity, map[string]any{
+			"error":  "VALIDATION_ERROR",
+			"fields": map[string]string{"old_password": "required", "new_password": "required"},
+		})
+	}
+
+	uid, ok := getUserIDFromContext(c)
+	if !ok || uid == 0 {
+		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "UNAUTHORIZED"})
+	}
+
+	var u models.User
+	if err := database.DB.First(&u, uid).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return c.JSON(http.StatusNotFound, map[string]any{"error": "USER_NOT_FOUND"})
+		}
+		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "DB_ERROR"})
+	}
+
+	// ตรวจรหัสเดิมกับ PasswordHash
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.OldPassword)); err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_OLD_PASSWORD"})
+	}
+
+	// สร้าง hash ใหม่
+	hash, err := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "HASH_ERROR"})
+	}
+
+	// อัปเดต
+	if err := database.DB.Model(&u).Update("password_hash", string(hash)).Error; err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "SAVE_ERROR"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{"ok": true})
 }
 
 // --------------------------------------------------------------------
@@ -252,42 +304,3 @@ func TeacherUpdateProfile(c echo.Context) error {
 }
 
 // POST /teacher/password/change
-func TeacherChangePassword(c echo.Context) error {
-	uid, role := currentUser(c)
-	if uid == 0 || (role != "teacher" && role != "admin") {
-		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "UNAUTHORIZED"})
-	}
-
-	var req changePasswordRequest
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
-	}
-	req.Current = strings.TrimSpace(req.Current)
-	req.Next = strings.TrimSpace(req.Next)
-
-	if len(req.Next) < 8 {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "WEAK_PASSWORD"})
-	}
-
-	var u models.User
-	if err := database.DB.First(&u, uid).Error; err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "USER_NOT_FOUND"})
-	}
-
-	// verify current
-	if bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Current)) != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_CURRENT_PASSWORD"})
-	}
-
-	// update to new hash
-	hash, _ := bcrypt.GenerateFromPassword([]byte(req.Next), bcrypt.DefaultCost)
-	now := time.Now()
-	if err := database.DB.Model(&models.User{}).Where("id = ?", uid).Updates(map[string]any{
-		"password":             string(hash),
-		"last_password_change": &now,
-	}).Error; err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, map[string]any{"ok": true})
-}

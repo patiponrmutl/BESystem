@@ -9,6 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"github.com/patiponrmutl/BESystem/database"
 	"github.com/patiponrmutl/BESystem/models"
@@ -55,6 +56,11 @@ type ParentLoginReq struct {
 }
 
 type StaffLoginReq struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type loginReq struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
@@ -158,8 +164,8 @@ func (h *AuthHandler) StaffLogin(c echo.Context) error {
 	if err := database.DB.Where("username = ?", username).First(&u).Error; err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
 	}
-	if bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(req.Password)) != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
 	}
 
 	token, err := h.signJWT(uint(u.ID), u.Role, u.Username, 7*24*time.Hour)
@@ -170,5 +176,81 @@ func (h *AuthHandler) StaffLogin(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]any{
 		"token": token,
 		"user":  map[string]any{"id": u.ID, "role": u.Role, "username": u.Username, "name": u.Username},
+	})
+}
+
+// AdminLogin: POST /admin/login
+func (h *AuthHandler) AdminLogin(c echo.Context) error {
+	var req loginReq
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
+	}
+	fields := map[string]string{}
+	if req.Username == "" {
+		fields["username"] = "required"
+	}
+	if req.Password == "" {
+		fields["password"] = "required"
+	}
+	if len(fields) > 0 {
+		return c.JSON(http.StatusUnprocessableEntity, map[string]any{"error": "VALIDATION_ERROR", "fields": fields})
+	}
+
+	// หา user
+	var u models.User
+	if err := database.DB.Where("username = ?", req.Username).First(&u).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
+		}
+		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
+
+	// role ต้องเป็น admin
+	if u.Role != "admin" {
+		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
+	}
+
+	// ตรวจรหัสผ่าน
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
+		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
+	}
+
+	// ออก JWT
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "dev-secret"
+	}
+
+	ttlHours := 8
+	if v := os.Getenv("JWT_TTL_HOURS"); v != "" {
+		if n := atoiOr(v, 8); n > 0 && n <= 24*7 {
+			ttlHours = n
+		}
+	}
+	exp := time.Now().Add(time.Duration(ttlHours) * time.Hour)
+
+	claims := jwt.MapClaims{
+		"sub":        u.ID,
+		"username":   u.Username,
+		"role":       u.Role,
+		"teacher_id": u.TeacherID, // อาจเป็น nil
+		"iat":        time.Now().Unix(),
+		"exp":        exp.Unix(),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	signed, err := token.SignedString([]byte(secret))
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "TOKEN_SIGN_ERROR"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"access_token": signed,
+		"token_type":   "Bearer",
+		"expires_in":   int(time.Until(exp).Seconds()),
+		"user": map[string]any{
+			"id":       u.ID,
+			"username": u.Username,
+			"role":     u.Role,
+		},
 	})
 }
