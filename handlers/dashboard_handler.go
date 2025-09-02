@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/patiponrmutl/BESystem/database"
+	"github.com/patiponrmutl/BESystem/models"
 )
 
 type DashboardHandler struct{}
@@ -160,4 +161,27 @@ func parseClassroom(code string) []string {
 // แปลง uint → string แบบง่าย
 func itoa(u uint) string {
 	return fmtUint(u)
+}
+
+// GET /dashboard/summary
+// คืนค่าจำนวนคร่าว ๆ สำหรับหน้าแดชบอร์ด
+func (h *DashboardHandler) Summary(c echo.Context) error {
+	var (
+		cntStudents int64
+		cntTeachers int64
+		cntRooms    int64
+		cntLeaves   int64
+	)
+
+	database.DB.Model(&models.Student{}).Count(&cntStudents)
+	database.DB.Model(&models.Teacher{}).Count(&cntTeachers)
+	database.DB.Model(&models.Homeroom{}).Count(&cntRooms)
+	database.DB.Model(&models.LeaveRequest{}).Where("status = ?", "pending").Count(&cntLeaves)
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"students":       cntStudents,
+		"teachers":       cntTeachers,
+		"homerooms":      cntRooms,
+		"pending_leaves": cntLeaves,
+	})
 }

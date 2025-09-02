@@ -1,12 +1,14 @@
 package handlers
 
-import "github.com/labstack/echo/v4"
+import (
+	"net/http"
 
-// HealthCheck godoc
-// @Summary      Health check
-// @Tags         health
-// @Success      200 {object} map[string]string
-// @Router       /health [get]
-func HealthCheck(c echo.Context) error {
-	return c.JSON(200, map[string]string{"status": "ok"})
+	"github.com/labstack/echo/v4"
+)
+
+// Health ใช้สำหรับ /health
+func Health(c echo.Context) error {
+	return c.JSON(http.StatusOK, map[string]string{
+		"status": "ok",
+	})
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -148,4 +149,44 @@ func getUserID(c echo.Context) (uint, bool) {
 // ใช้ fmt.Sscanf โดยเลี่ยง import fmt ตรง ๆ
 func fmtSscanf(str string, format string, a ...any) (int, error) {
 	return fmtSscanfImpl(str, format, a...)
+}
+
+func (h *LeaveRequestHandler) Get(c echo.Context) error {
+	status := c.QueryParam("status")
+	studentID := c.QueryParam("student_id")
+
+	page, _ := strconv.Atoi(c.QueryParam("page"))
+	if page < 1 {
+		page = 1
+	}
+	size, _ := strconv.Atoi(c.QueryParam("size"))
+	if size < 1 || size > 200 {
+		size = 50
+	}
+	offset := (page - 1) * size
+
+	var q *gorm.DB = database.DB.Model(&models.LeaveRequest{})
+	if status != "" {
+		q = q.Where("status = ?", status)
+	}
+	if studentID != "" {
+		q = q.Where("student_id = ?", studentID)
+	}
+
+	var total int64
+	if err := q.Count(&total).Error; err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
+
+	var items []models.LeaveRequest
+	if err := q.Order("id DESC").Limit(size).Offset(offset).Find(&items).Error; err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"items": items,
+		"page":  page,
+		"size":  size,
+		"total": total,
+	})
 }

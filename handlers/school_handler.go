@@ -12,6 +12,37 @@ import (
 
 type SchoolHandler struct{}
 
+// ใช้ประกอบ/แตก payload code_lengths จาก/ไปยังคอลัมน์เดิมใน DB
+type CodeLengthsPayload struct {
+	TeacherCodeDigits int `json:"teacher_code_digits"`
+	StudentCodeDigits int `json:"student_code_digits"`
+}
+
+type SchoolUpsertReq struct {
+	SchoolCode string `json:"school_code"`
+	SchoolName string `json:"school_name"`
+	Address    string `json:"address"`
+	Phone      string `json:"phone"`
+	Education  string `json:"education_level"`
+	// รับซ้อน (FE จะส่งเข้ามาอันนี้เป็นหลัก)
+	CodeLengths *CodeLengthsPayload `json:"code_lengths,omitempty"`
+
+	// สำรอง: ถ้า FE รุ่นเก่ามาเป็น flat ก็ยังรองรับ
+	TeacherCodeDigits *int `json:"teacher_code_digits,omitempty"`
+	StudentCodeDigits *int `json:"student_code_digits,omitempty"`
+}
+
+type SchoolResp struct {
+	ID         uint   `json:"id"`
+	SchoolCode string `json:"school_code"`
+	SchoolName string `json:"school_name"`
+	Address    string `json:"address"`
+	Phone      string `json:"phone"`
+	Education  string `json:"education_level"`
+	// ส่งกลับแบบซ้อน เพื่อให้ FE ใช้ที่เดียว
+	CodeLengths CodeLengthsPayload `json:"code_lengths"`
+}
+
 func NewSchoolHandler() *SchoolHandler { return &SchoolHandler{} }
 
 type schoolPayload struct {

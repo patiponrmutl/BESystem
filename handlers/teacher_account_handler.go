@@ -52,6 +52,11 @@ type teacherAccountDTO struct {
 	UpdatedAt           time.Time `json:"updated_at"`
 }
 
+type updateFlagsReq struct {
+	Enabled             *bool `json:"enabled"`
+	ForcePasswordChange *bool `json:"force_password_change"`
+}
+
 // -----------------------------
 // Helpers
 // -----------------------------
@@ -274,4 +279,54 @@ func (h *TeacherAccountHandler) Patch(c echo.Context) error {
 	// ทำ NO-OP แล้วคืนค่าปัจจุบันกลับไป (ค่า default)
 	// หากอนาคตเพิ่มคอลัมน์ใน models.User เมื่อไร มาปรับตรงนี้ให้เซฟจริงได้ทันที
 	return c.JSON(http.StatusOK, toDTO(*u))
+}
+
+func (h *TeacherAccountHandler) UpdateFlags(c echo.Context) error {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "INVALID_ID"})
+	}
+
+	var u models.User
+	if err := database.DB.First(&u, id).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return echo.NewHTTPError(http.StatusNotFound, map[string]any{"error": "NOT_FOUND"})
+		}
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
+
+	var req updateFlagsReq
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
+	}
+	updates := map[string]any{}
+	if req.Enabled != nil {
+		updates["enabled"] = *req.Enabled
+	}
+	if req.ForcePasswordChange != nil {
+		updates["force_password_change"] = *req.ForcePasswordChange
+	}
+	if len(updates) == 0 {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "NO_FIELDS"})
+	}
+	updates["updated_at"] = time.Now()
+
+	if err := database.DB.Model(&u).Updates(updates).Error; err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
+
+	// reload to return latest
+	if err := database.DB.First(&u, id).Error; err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, map[string]any{
+		"id":                    u.ID,
+		"teacher_id":            u.TeacherID,
+		"username":              u.Username,
+		"enabled":               u.Enabled,
+		"force_password_change": u.ForcePasswordChange,
+		"updated_at":            u.UpdatedAt,
+	})
 }

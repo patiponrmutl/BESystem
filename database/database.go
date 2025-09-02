@@ -18,20 +18,29 @@ func Connect(cfg *config.Config) {
 	}
 	DB = db
 
+	// ----- AutoMigrate โครงสร้างทั้งหมดของเรา -----
 	if err := DB.AutoMigrate(
-
 		&models.School{},
-		&models.Student{},      // ✅ เพิ่มนักเรียน
-		&models.Teacher{},      // ✅ ครู
-		&models.Homeroom{},     // ✅ กำหนดครูประจำชั้น
-		&models.StudentMove{},  // ✅ เพิ่ม
-		&models.StudentMove{},  // ✅ การย้ายนักเรียน
-		&models.CalendarItem{}, // ✅ ปฎิทินการศึกษา
+		&models.Student{},
+		&models.Teacher{},
+		&models.Homeroom{},
+		&models.StudentMove{},  // ✅ การย้ายนักเรียน (ครั้งเดียวพอ)
+		&models.CalendarItem{}, // ✅ ปฏิทินการศึกษา
 		&models.Attendance{},
 		&models.User{},
 		&models.Parent{},
 		&models.LeaveRequest{},
 	); err != nil {
 		log.Fatalf("auto migrate failed: %v", err)
+	}
+
+	// ----- ลบคอลัมน์ legacy: users.password (เราใช้เฉพาะ password_hash แล้ว) -----
+	// ทำแบบปลอดภัย: เช็คก่อนว่ามีคอลัมน์ค้างอยู่ไหม
+	if DB.Migrator().HasColumn(&models.User{}, "password") {
+		if err := DB.Migrator().DropColumn(&models.User{}, "password"); err != nil {
+			log.Printf("[migrate] warn: drop users.password failed: %v", err)
+		} else {
+			log.Printf("[migrate] dropped legacy column users.password")
+		}
 	}
 }

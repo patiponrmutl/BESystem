@@ -8,6 +8,7 @@ import (
 
 	"github.com/patiponrmutl/BESystem/config"
 	"github.com/patiponrmutl/BESystem/database"
+	"github.com/patiponrmutl/BESystem/handlers" // <<<< เพิ่มเข้ามา
 	"github.com/patiponrmutl/BESystem/routes"
 )
 
@@ -21,10 +22,16 @@ func main() {
 	// เชื่อมต่อฐานข้อมูล (ถ้า DB ยังไม่ขึ้น โปรแกรมจะ error ทันที — เหมาะสำหรับ early fail)
 	database.Connect(cfg)
 
+	// สร้างบัญชี Admin อัตโนมัติถ้ายังไม่มี
+	if err := handlers.EnsureDefaultAdmin(); err != nil {
+		log.Printf("[bootstrap] failed to ensure default admin: %v", err)
+	}
+
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
 	e.Use(middleware.CORS())
+
 	// ===== Pretty Logger with ANSI colors =====
 	const (
 		cReset  = "\033[0m"
@@ -38,6 +45,7 @@ func main() {
 			"error=${error} latency=${latency_human} ip=${remote_ip}\n",
 	}))
 
+	// ลงทะเบียน routes ทั้งหมด
 	routes.RegisterRoutes(e)
 
 	addr := ":" + cfg.AppPort

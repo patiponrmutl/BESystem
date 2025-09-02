@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -9,7 +11,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 
 	"github.com/patiponrmutl/BESystem/database"
 	"github.com/patiponrmutl/BESystem/models"
@@ -24,7 +25,7 @@ type AuthHandler struct {
 func NewAuthHandler() *AuthHandler {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		secret = "dev-secret" // กันล่มในเครื่อง dev (โปรดตั้งใน .env จริง)
+		secret = "dev-secret"
 	}
 	return &AuthHandler{JWTSecret: secret}
 }
@@ -41,120 +42,68 @@ func (h *AuthHandler) signJWT(sub uint, role, name string, ttl time.Duration) (s
 	return tk.SignedString([]byte(h.JWTSecret))
 }
 
+// แปลง interface{} เป็น string แบบปลอดภัย
+func asString(v any) string {
+	if v == nil {
+		return ""
+	}
+	switch t := v.(type) {
+	case string:
+		return t
+	case []byte:
+		return string(t)
+	default:
+		return ""
+	}
+}
+
 /* ====================== DTOs ====================== */
-
-type ParentRegisterReq struct {
-	Email     string `json:"email"`
-	Phone     string `json:"phone"`
-	Password  string `json:"password"`
-	AgreePDPA bool   `json:"agree_pdpa"`
-}
-
-type ParentLoginReq struct {
-	Identity string `json:"identity"` // email หรือ phone
-	Password string `json:"password"`
-}
 
 type StaffLoginReq struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
-type loginReq struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+/* ====================== Seed Admin ====================== */
+
+func EnsureDefaultAdmin() error {
+	var cnt int64
+	if err := database.DB.Model(&models.User{}).Where("role = ?", "admin").Count(&cnt).Error; err != nil {
+		return err
+	}
+	if cnt > 0 {
+		return nil
+	}
+
+	username := os.Getenv("ADMIN_SEED_USERNAME")
+	if username == "" {
+		username = "Admin"
+	}
+	password := os.Getenv("ADMIN_SEED_PASSWORD")
+	if password == "" {
+		password = "1234"
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	u := models.User{Username: username, PasswordHash: string(hash), Role: "admin"}
+	if err := database.DB.Create(&u).Error; err != nil {
+		return err
+	}
+	log.Printf("[bootstrap] default admin created: %s/%s", username, password)
+	return nil
 }
 
 /* ====================== Handlers ====================== */
 
-// POST /auth/parents/register
-func (h *AuthHandler) ParentRegister(c echo.Context) error {
-	var req ParentRegisterReq
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
-	}
-
-	email := strings.TrimSpace(strings.ToLower(req.Email))
-	phone := strings.TrimSpace(req.Phone)
-	pass := strings.TrimSpace(req.Password)
-	if email == "" || phone == "" || pass == "" || !req.AgreePDPA {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "MISSING_FIELDS"})
-	}
-
-	// ตรวจซ้ำ email
-	var dup models.Parent
-	if err := database.DB.Where("email = ?", email).First(&dup).Error; err == nil {
-		return echo.NewHTTPError(http.StatusConflict, map[string]any{"error": "EMAIL_EXISTS", "code": "EMAIL_EXISTS"})
-	}
-
-	hash, _ := bcrypt.GenerateFromPassword([]byte(pass), bcrypt.DefaultCost)
-	rec := models.Parent{
-		Email:    email,
-		Phone:    phone,
-		Password: string(hash),
-		PdpaOK:   true,
-	}
-	if err := database.DB.Create(&rec).Error; err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": err.Error()})
-	}
-	return c.JSON(http.StatusCreated, map[string]any{"id": rec.ID})
-}
-
-// GET /auth/check-email?email=...
-func (h *AuthHandler) CheckEmail(c echo.Context) error {
-	email := strings.TrimSpace(strings.ToLower(c.QueryParam("email")))
-	if email == "" {
-		return c.JSON(http.StatusOK, map[string]bool{"exists": false})
-	}
-	var p models.Parent
-	err := database.DB.Where("email = ?", email).First(&p).Error
-	return c.JSON(http.StatusOK, map[string]bool{"exists": err == nil})
-}
-
-// POST /auth/parent/login
-func (h *AuthHandler) ParentLogin(c echo.Context) error {
-	var req ParentLoginReq
-	if err := c.Bind(&req); err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
-	}
-
-	id := strings.TrimSpace(strings.ToLower(req.Identity))
-	if id == "" || req.Password == "" {
-		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "MISSING_FIELDS"})
-	}
-
-	var p models.Parent
-	q := database.DB
-	if strings.Contains(id, "@") {
-		q = q.Where("email = ?", id)
-	} else {
-		q = q.Where("phone = ?", id)
-	}
-	if err := q.First(&p).Error; err != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
-	}
-	if bcrypt.CompareHashAndPassword([]byte(p.Password), []byte(req.Password)) != nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
-	}
-
-	token, err := h.signJWT(uint(p.ID), "parent", p.Email, 7*24*time.Hour)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusInternalServerError, map[string]any{"error": "TOKEN_GEN_FAILED"})
-	}
-
-	return c.JSON(http.StatusOK, map[string]any{
-		"token": token,
-		"user":  map[string]any{"id": p.ID, "role": "parent", "emailOrPhone": id, "name": "ผู้ปกครอง"},
-	})
-}
-
-// POST /auth/staff/login
+// POST /auth/login (staff/admin/teacher ใช้เส้นเดียวกัน)
 func (h *AuthHandler) StaffLogin(c echo.Context) error {
 	var req StaffLoginReq
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
 	}
-
 	username := strings.TrimSpace(req.Username)
 	if username == "" || req.Password == "" {
 		return echo.NewHTTPError(http.StatusBadRequest, map[string]any{"error": "MISSING_FIELDS"})
@@ -164,93 +113,87 @@ func (h *AuthHandler) StaffLogin(c echo.Context) error {
 	if err := database.DB.Where("username = ?", username).First(&u).Error; err != nil {
 		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
 	}
-	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
+	if bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)) != nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
 	}
 
-	token, err := h.signJWT(uint(u.ID), u.Role, u.Username, 7*24*time.Hour)
+	token, err := h.signJWT(uint(u.ID), u.Role, u.Username, 8*time.Hour)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, map[string]any{"error": "TOKEN_GEN_FAILED"})
 	}
-
 	return c.JSON(http.StatusOK, map[string]any{
-		"token": token,
-		"user":  map[string]any{"id": u.ID, "role": u.Role, "username": u.Username, "name": u.Username},
-	})
-}
-
-// AdminLogin: POST /admin/login
-func (h *AuthHandler) AdminLogin(c echo.Context) error {
-	var req loginReq
-	if err := c.Bind(&req); err != nil {
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": "INVALID_PAYLOAD"})
-	}
-	fields := map[string]string{}
-	if req.Username == "" {
-		fields["username"] = "required"
-	}
-	if req.Password == "" {
-		fields["password"] = "required"
-	}
-	if len(fields) > 0 {
-		return c.JSON(http.StatusUnprocessableEntity, map[string]any{"error": "VALIDATION_ERROR", "fields": fields})
-	}
-
-	// หา user
-	var u models.User
-	if err := database.DB.Where("username = ?", req.Username).First(&u).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
-		}
-		return c.JSON(http.StatusBadRequest, map[string]any{"error": err.Error()})
-	}
-
-	// role ต้องเป็น admin
-	if u.Role != "admin" {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
-	}
-
-	// ตรวจรหัสผ่าน
-	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(req.Password)); err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]any{"error": "INVALID_CREDENTIALS"})
-	}
-
-	// ออก JWT
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		secret = "dev-secret"
-	}
-
-	ttlHours := 8
-	if v := os.Getenv("JWT_TTL_HOURS"); v != "" {
-		if n := atoiOr(v, 8); n > 0 && n <= 24*7 {
-			ttlHours = n
-		}
-	}
-	exp := time.Now().Add(time.Duration(ttlHours) * time.Hour)
-
-	claims := jwt.MapClaims{
-		"sub":        u.ID,
-		"username":   u.Username,
-		"role":       u.Role,
-		"teacher_id": u.TeacherID, // อาจเป็น nil
-		"iat":        time.Now().Unix(),
-		"exp":        exp.Unix(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signed, err := token.SignedString([]byte(secret))
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]any{"error": "TOKEN_SIGN_ERROR"})
-	}
-
-	return c.JSON(http.StatusOK, map[string]any{
-		"access_token": signed,
+		"access_token": token,
 		"token_type":   "Bearer",
-		"expires_in":   int(time.Until(exp).Seconds()),
 		"user": map[string]any{
 			"id":       u.ID,
 			"username": u.Username,
 			"role":     u.Role,
 		},
 	})
+}
+
+// GET /auth/me
+func (h *AuthHandler) Me(c echo.Context) error {
+	claims, ok := c.Get("auth.claims").(jwt.MapClaims)
+	if !ok {
+		return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_TOKEN"})
+	}
+	return c.JSON(http.StatusOK, map[string]any{
+		"id":       claims["sub"],
+		"username": claims["name"],
+		"role":     claims["role"],
+	})
+}
+
+/* ====================== Middleware ====================== */
+
+// RequireAuth: parse JWT แล้วใส่ claims ลง context
+func (h *AuthHandler) RequireAuth(next echo.HandlerFunc) echo.HandlerFunc {
+	secret := h.JWTSecret
+	return func(c echo.Context) error {
+		ah := c.Request().Header.Get("Authorization")
+		if ah == "" || !strings.HasPrefix(ah, "Bearer ") {
+			return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "MISSING_AUTH_HEADER"})
+		}
+		tokenStr := strings.TrimPrefix(ah, "Bearer ")
+		tk, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
+			if t.Method != jwt.SigningMethodHS256 {
+				return nil, errors.New("invalid sign method")
+			}
+			return []byte(secret), nil
+		})
+		if err != nil || !tk.Valid {
+			return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_TOKEN"})
+		}
+		claims, ok := tk.Claims.(jwt.MapClaims)
+		if !ok {
+			return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_TOKEN"})
+		}
+		c.Set("auth.claims", claims)
+		return next(c)
+	}
+}
+
+// RequireRoles: ใช้ต่อท้ายจาก RequireAuth เพื่อบังคับสิทธิ์ตาม role
+// ตัวอย่าง: group.GET("/teachers", h.List, auth.RequireRoles("admin"))
+func (h *AuthHandler) RequireRoles(roles ...string) echo.MiddlewareFunc {
+	// แปลง roles slice เป็น set
+	allowed := map[string]struct{}{}
+	for _, r := range roles {
+		allowed[strings.ToLower(strings.TrimSpace(r))] = struct{}{}
+	}
+
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			claims, ok := c.Get("auth.claims").(jwt.MapClaims)
+			if !ok {
+				return echo.NewHTTPError(http.StatusUnauthorized, map[string]any{"error": "INVALID_TOKEN"})
+			}
+			role := strings.ToLower(asString(claims["role"]))
+			if _, ok := allowed[role]; !ok {
+				return echo.NewHTTPError(http.StatusForbidden, map[string]any{"error": "FORBIDDEN"})
+			}
+			return next(c)
+		}
+	}
 }

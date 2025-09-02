@@ -221,6 +221,7 @@ func (h *CalendarHandler) UpdateNormal(c echo.Context) error {
 		}
 		it.TimeOut = p.TimeOut
 	}
+	// อนุญาตให้ล้าง note ด้วยการส่ง "" มา
 	if p.Note != "" || (p.Note == "" && c.Request().Body != nil) {
 		it.Note = p.Note
 	}
@@ -261,6 +262,7 @@ func (h *CalendarHandler) UpdateHoliday(c echo.Context) error {
 		}
 		it.EndDate = p.EndDate
 	}
+	// อนุญาตให้ล้าง note
 	if p.Note != "" || (p.Note == "" && c.Request().Body != nil) {
 		it.Note = p.Note
 	}
@@ -307,6 +309,7 @@ func (h *CalendarHandler) UpdateEvent(c echo.Context) error {
 		}
 		it.EndTime = p.EndTime
 	}
+	// อนุญาตให้ล้าง note
 	if p.Note != "" || (p.Note == "" && c.Request().Body != nil) {
 		it.Note = p.Note
 	}
@@ -365,4 +368,62 @@ func (h *CalendarHandler) DeleteEvent(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
 	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+/* ====================== เมธอดรวม สำหรับ routes แบบ /calendar/:kind ====================== */
+
+// GET /calendar/:kind
+func (h *CalendarHandler) List(c echo.Context) error {
+	switch c.Param("kind") {
+	case "normals":
+		return h.ListNormals(c)
+	case "holidays":
+		return h.ListHolidays(c)
+	case "events":
+		return h.ListEvents(c)
+	default:
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
+}
+
+// POST /calendar/:kind
+func (h *CalendarHandler) Create(c echo.Context) error {
+	switch c.Param("kind") {
+	case "normals":
+		return h.CreateNormal(c)
+	case "holidays":
+		return h.CreateHoliday(c)
+	case "events":
+		return h.CreateEvent(c)
+	default:
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
+}
+
+// PUT /calendar/:kind/:id
+func (h *CalendarHandler) Update(c echo.Context) error {
+	switch c.Param("kind") {
+	case "normals":
+		return h.UpdateNormal(c)
+	case "holidays":
+		return h.UpdateHoliday(c)
+	case "events":
+		return h.UpdateEvent(c)
+	default:
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
+}
+
+// DELETE /calendar/:kind/:id
+func (h *CalendarHandler) Delete(c echo.Context) error {
+	switch c.Param("kind") {
+	case "normals":
+		return h.DeleteNormal(c)
+	case "holidays":
+		return h.DeleteHoliday(c)
+	case "events":
+		return h.DeleteEvent(c)
+	default:
+		return echo.NewHTTPError(http.StatusNotFound, map[string]string{"error": "NOT_FOUND"})
+	}
 }
